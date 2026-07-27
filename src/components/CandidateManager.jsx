@@ -1,21 +1,24 @@
-import { useState, useEffect } from 'react';
+import React, { useState, useEffect } from 'react';
 
-const API_URL = 'http://localhost:5000/api/candidates';
-
-export default function CandidateManager() {
+const CandidateManager = () => {
   const [candidates, setCandidates] = useState([]);
   const [name, setName] = useState('');
   const [role, setRole] = useState('');
   const [status, setStatus] = useState('Applied');
+  const [loading, setLoading] = useState(true);
 
-  // 1. READ: Fetch candidates from backend on load
+  const API_URL = 'http://localhost:5000/api/candidates';
+
+  // Fetch candidates on load
   const fetchCandidates = async () => {
     try {
       const res = await fetch(API_URL);
       const data = await res.json();
       setCandidates(data);
+      setLoading(false);
     } catch (err) {
       console.error('Error fetching candidates:', err);
+      setLoading(false);
     }
   };
 
@@ -23,7 +26,7 @@ export default function CandidateManager() {
     fetchCandidates();
   }, []);
 
-  // 2. CREATE: Add a new candidate
+  // Add Candidate
   const handleAddCandidate = async (e) => {
     e.preventDefault();
     if (!name || !role) return;
@@ -38,103 +41,164 @@ export default function CandidateManager() {
         setName('');
         setRole('');
         setStatus('Applied');
-        fetchCandidates(); // Refresh list automatically
+        fetchCandidates();
       }
     } catch (err) {
       console.error('Error adding candidate:', err);
     }
   };
 
-  // 3. UPDATE: Change candidate status via dropdown
-  const handleUpdateStatus = async (id, newStatus) => {
+  // Update Status
+  const handleStatusChange = async (id, newStatus) => {
     try {
       const res = await fetch(`${API_URL}/${id}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ status: newStatus }),
       });
-      if (res.ok) fetchCandidates();
+      if (res.ok) {
+        fetchCandidates();
+      }
     } catch (err) {
       console.error('Error updating candidate:', err);
     }
   };
 
-  // 4. DELETE: Remove candidate from backend
+  // Delete Candidate
   const handleDelete = async (id) => {
     try {
       const res = await fetch(`${API_URL}/${id}`, { method: 'DELETE' });
-      if (res.ok) fetchCandidates();
+      if (res.ok) {
+        fetchCandidates();
+      }
     } catch (err) {
       console.error('Error deleting candidate:', err);
     }
   };
 
+  const getStatusBadge = (status) => {
+    switch (status) {
+      case 'Hired':
+        return 'bg-emerald-100 text-emerald-800 border-emerald-200';
+      case 'Interviewing':
+        return 'bg-amber-100 text-amber-800 border-amber-200';
+      case 'Rejected':
+        return 'bg-rose-100 text-rose-800 border-rose-200';
+      default:
+        return 'bg-indigo-100 text-indigo-800 border-indigo-200';
+    }
+  };
+
   return (
-    <div className="max-w-4xl mx-auto p-6 bg-white shadow-md rounded-lg my-8">
-      <h2 className="text-2xl font-bold mb-4 text-gray-800">Candidate Pipeline (CRUD Demo)</h2>
+    <section className="py-16 bg-slate-50 border-t border-slate-200">
+      <div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8">
+        
+        {/* Header */}
+        <div className="text-center mb-10">
+          <span className="inline-block px-3 py-1 bg-indigo-100 text-indigo-700 text-xs font-semibold rounded-full uppercase tracking-wider mb-2">
+            Interactive Demo
+          </span>
+          <h2 className="text-3xl font-extrabold text-slate-900">
+            Candidate Pipeline Manager
+          </h2>
+          <p className="mt-2 text-slate-600">
+            Test full CRUD capabilities connected live to your Express API.
+          </p>
+        </div>
 
-      {/* CREATE FORM */}
-      <form onSubmit={handleAddCandidate} className="grid grid-cols-1 md:grid-cols-4 gap-3 mb-6">
-        <input
-          type="text"
-          placeholder="Candidate Name"
-          value={name}
-          onChange={(e) => setName(e.target.value)}
-          className="border p-2 rounded w-full"
-          required
-        />
-        <input
-          type="text"
-          placeholder="Role (e.g. React Dev)"
-          value={role}
-          onChange={(e) => setRole(e.target.value)}
-          className="border p-2 rounded w-full"
-          required
-        />
-        <select
-          value={status}
-          onChange={(e) => setStatus(e.target.value)}
-          className="border p-2 rounded w-full"
+        {/* Input Form */}
+        <form 
+          onSubmit={handleAddCandidate}
+          className="bg-white p-6 rounded-2xl shadow-sm border border-slate-200 mb-8 grid grid-cols-1 md:grid-cols-4 gap-4"
         >
-          <option value="Applied">Applied</option>
-          <option value="Interviewing">Interviewing</option>
-          <option value="Hired">Hired</option>
-          <option value="Rejected">Rejected</option>
-        </select>
-        <button type="submit" className="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700">
-          Add Candidate
-        </button>
-      </form>
+          <input
+            type="text"
+            placeholder="Candidate Name"
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            required
+            className="w-full px-4 py-2.5 rounded-lg border border-slate-300 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none text-slate-800 transition"
+          />
+          <input
+            type="text"
+            placeholder="Role (e.g. React Developer)"
+            value={role}
+            onChange={(e) => setRole(e.target.value)}
+            required
+            className="w-full px-4 py-2.5 rounded-lg border border-slate-300 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none text-slate-800 transition"
+          />
+          <select
+            value={status}
+            onChange={(e) => setStatus(e.target.value)}
+            className="w-full px-4 py-2.5 rounded-lg border border-slate-300 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none text-slate-800 bg-white transition"
+          >
+            <option value="Applied">Applied</option>
+            <option value="Interviewing">Interviewing</option>
+            <option value="Hired">Hired</option>
+            <option value="Rejected">Rejected</option>
+          </select>
+          <button
+            type="submit"
+            className="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-semibold py-2.5 rounded-lg shadow transition duration-200"
+          >
+            + Add Candidate
+          </button>
+        </form>
 
-      {/* CANDIDATE LIST */}
-      <div className="space-y-3">
-        {candidates.map((c) => (
-          <div key={c.id} className="flex flex-col sm:flex-row justify-between items-center p-3 border rounded bg-gray-50">
-            <div>
-              <p className="font-semibold text-gray-900">{c.name}</p>
-              <p className="text-sm text-gray-500">{c.role}</p>
-            </div>
-            <div className="flex items-center gap-2 mt-2 sm:mt-0">
-              <select
-                value={c.status}
-                onChange={(e) => handleUpdateStatus(c.id, e.target.value)}
-                className="border p-1 rounded text-sm bg-white"
-              >
-                <option value="Applied">Applied</option>
-                <option value="Interviewing">Interviewing</option>
-                <option value="Hired">Hired</option>
-                <option value="Rejected">Rejected</option>
-              </select>
-              <button
-                onClick={() => handleDelete(c.id)}
-                className="bg-red-500 text-white px-2 py-1 text-sm rounded hover:bg-red-600"
-              >
-                Delete
-              </button>
-            </div>
+        {/* Candidates List */}
+        <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
+          <div className="px-6 py-4 bg-slate-50 border-b border-slate-200 flex justify-between items-center">
+            <h3 className="font-semibold text-slate-700">Active Candidates</h3>
+            <span className="text-xs font-medium text-slate-500">
+              Total: {candidates.length}
+            </span>
           </div>
-        ))}
+
+          {loading ? (
+            <div className="p-8 text-center text-slate-500">Loading candidates...</div>
+          ) : candidates.length === 0 ? (
+            <div className="p-8 text-center text-slate-500">
+              No candidates added yet. Fill out the form above to get started!
+            </div>
+          ) : (
+            <ul className="divide-y divide-slate-100">
+              {candidates.map((candidate) => (
+                <li key={candidate.id} className="p-5 flex flex-col sm:flex-row sm:items-center justify-between gap-4 hover:bg-slate-50/50 transition">
+                  <div>
+                    <h4 className="font-bold text-slate-800 text-base">{candidate.name}</h4>
+                    <p className="text-sm text-slate-500">{candidate.role}</p>
+                  </div>
+
+                  <div className="flex items-center gap-3">
+                    {/* Status dropdown */}
+                    <select
+                      value={candidate.status}
+                      onChange={(e) => handleStatusChange(candidate.id, e.target.value)}
+                      className={`text-xs font-semibold px-3 py-1.5 rounded-full border cursor-pointer outline-none transition ${getStatusBadge(candidate.status)}`}
+                    >
+                      <option value="Applied">Applied</option>
+                      <option value="Interviewing">Interviewing</option>
+                      <option value="Hired">Hired</option>
+                      <option value="Rejected">Rejected</option>
+                    </select>
+
+                    {/* Delete button */}
+                    <button
+                      onClick={() => handleDelete(candidate.id)}
+                      className="text-xs font-medium text-rose-600 hover:text-rose-800 hover:bg-rose-50 px-3 py-1.5 rounded-md transition"
+                    >
+                      Delete
+                    </button>
+                  </div>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+
       </div>
-    </div>
+    </section>
   );
-}
+};
+
+export default CandidateManager;
