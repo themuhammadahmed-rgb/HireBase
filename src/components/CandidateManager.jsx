@@ -41,6 +41,7 @@ function CandidateManager() {
       .then(data => {
         setCandidates(data)
         setIsLoading(false)
+        setError(null)
       })
       .catch((err) => {
         setError(err.message || 'Could not load candidates.')
@@ -123,7 +124,7 @@ function CandidateManager() {
     submissionData.append('appliedDate', formData.appliedDate)
     submissionData.append('resume', resumeFile)
 
-    fetch(`${API_URL}/advanced`, {
+    fetch(API_URL, {
       method: 'POST',
       headers: getAuthHeaders(),
       body: submissionData
@@ -132,11 +133,11 @@ function CandidateManager() {
         const data = await res.json()
         if (!res.ok) {
           if (data.errors) setFormErrors(data.errors)
-          throw new Error(data.message || 'Server-side validation failed.')
+          throw new Error(data.message || 'Server error or validation failed.')
         }
         return data
       })
-      .then((data) => {
+      .then(() => {
         setToast({ type: 'success', message: 'Candidate registered successfully!' })
         setFormData({ fullName: '', email: '', phone: '', stage: 'Applied', appliedDate: '' })
         setResumeFile(null)
@@ -309,17 +310,7 @@ function CandidateManager() {
               isSubmitting ? 'bg-indigo-400 cursor-not-allowed' : 'bg-indigo-600 hover:bg-indigo-700'
             }`}
           >
-            {isSubmitting ? (
-              <>
-                <svg className="animate-spin -ml-1 mr-2 h-4 w-4 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                </svg>
-                Validating & Submitting...
-              </>
-            ) : (
-              'Submit Candidate'
-            )}
+            {isSubmitting ? 'Validating & Submitting...' : 'Submit Candidate'}
           </button>
         </form>
       </div>
@@ -345,11 +336,23 @@ function CandidateManager() {
                   <div>
                     <p className="font-semibold text-slate-900 text-base">{displayName}</p>
                     <p className="text-slate-500 text-sm">
-                      {candidate.email ? `${candidate.email} • ${candidate.phone || ''}` : candidate.role}
+                      {candidate.email} • {candidate.phone}
                     </p>
-                    {candidate.appliedDate && (
-                      <p className="text-slate-400 text-xs mt-1">Applied: {candidate.appliedDate}</p>
-                    )}
+                    <div className="flex items-center gap-3 mt-1">
+                      {candidate.appliedDate && (
+                        <p className="text-slate-400 text-xs">Applied: {candidate.appliedDate}</p>
+                      )}
+                      {candidate.resumeUrl && (
+                        <a
+                          href={`http://localhost:5000/${candidate.resumeUrl}`}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="text-indigo-600 hover:underline text-xs font-medium"
+                        >
+                          View Resume
+                        </a>
+                      )}
+                    </div>
                   </div>
 
                   <div className="flex items-center gap-3 w-full sm:w-auto justify-between sm:justify-end">
@@ -384,3 +387,4 @@ function CandidateManager() {
 }
 
 export default CandidateManager
+
