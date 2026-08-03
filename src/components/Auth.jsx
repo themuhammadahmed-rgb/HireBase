@@ -13,7 +13,6 @@ function Auth({ onLoginSuccess }) {
     e.preventDefault();
     setError('');
 
-    // Client-side validation
     if (!email.includes('@')) {
       setError('Please enter a valid email address.');
       return;
@@ -41,7 +40,6 @@ function Auth({ onLoginSuccess }) {
         return;
       }
 
-      // Store JWT token on frontend
       localStorage.setItem('token', data.token);
       localStorage.setItem('userEmail', data.user.email);
       onLoginSuccess(data.user.email);
