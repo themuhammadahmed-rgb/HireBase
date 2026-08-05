@@ -1,6 +1,10 @@
 import React, { useState } from 'react';
+import { useApp } from './AppContext';
 
-export default function AddCandidateForm({ token, onCandidateAdded }) {
+export default function AddCandidateForm() {
+  // Grab fetchCandidates from global context (no props needed!)
+  const { fetchCandidates } = useApp();
+
   const [formData, setFormData] = useState({
     fullName: '',
     email: '',
@@ -86,7 +90,8 @@ export default function AddCandidateForm({ token, onCandidateAdded }) {
     data.append('resume', resumeFile);
 
     try {
-      const response = await fetch('http://localhost:5000/api/candidates/advanced', {
+      const token = localStorage.getItem('token');
+      const response = await fetch('http://localhost:5000/api/candidates', {
         method: 'POST',
         headers: {
           Authorization: `Bearer ${token}`
@@ -108,7 +113,8 @@ export default function AddCandidateForm({ token, onCandidateAdded }) {
         setResumeFile(null);
         setErrors({});
         
-        if (onCandidateAdded) onCandidateAdded(result.candidate);
+        // Refresh candidates globally across the whole app
+        await fetchCandidates();
       }
     } catch (error) {
       setToast({ type: 'error', message: 'Network error. Please ensure the backend server is running.' });
