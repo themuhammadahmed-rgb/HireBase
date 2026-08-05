@@ -1,11 +1,11 @@
-import { useState, useEffect } from 'react'
+import { useState } from 'react'
+import { useApp } from './AppContext'
 
 const API_URL = 'http://localhost:5000/api/candidates'
 
 function CandidateManager() {
-  const [candidates, setCandidates] = useState([])
-  const [isLoading, setIsLoading] = useState(true)
-  const [error, setError] = useState(null)
+  // 1. REFACTORED: Use Global State instead of local candidates/loading/error
+  const { candidates, loading, error, fetchCandidates } = useApp()
 
   const [formData, setFormData] = useState({
     fullName: '',
@@ -25,33 +25,6 @@ function CandidateManager() {
       'Authorization': `Bearer ${token}`
     }
   }
-
-  const fetchCandidates = () => {
-    setIsLoading(true)
-    fetch(API_URL, { 
-      headers: {
-        'Content-Type': 'application/json',
-        ...getAuthHeaders()
-      } 
-    })
-      .then(res => {
-        if (!res.ok) throw new Error('Unauthorized or Session Expired')
-        return res.json()
-      })
-      .then(data => {
-        setCandidates(data)
-        setIsLoading(false)
-        setError(null)
-      })
-      .catch((err) => {
-        setError(err.message || 'Could not load candidates.')
-        setIsLoading(false)
-      })
-  }
-
-  useEffect(() => {
-    fetchCandidates()
-  }, [])
 
   const handleInputChange = (e) => {
     setFormData({ ...formData, [e.target.name]: e.target.value })
@@ -142,6 +115,7 @@ function CandidateManager() {
         setFormData({ fullName: '', email: '', phone: '', stage: 'Applied', appliedDate: '' })
         setResumeFile(null)
         setFormErrors({})
+        // Re-fetch centrally via context
         fetchCandidates()
       })
       .catch((err) => {
@@ -163,7 +137,7 @@ function CandidateManager() {
     })
       .then(res => res.json())
       .then(() => fetchCandidates())
-      .catch(() => setError('Failed to update stage.'))
+      .catch(() => alert('Failed to update stage.'))
   }
 
   const handleDelete = (id) => {
@@ -172,7 +146,7 @@ function CandidateManager() {
       headers: getAuthHeaders()
     })
       .then(() => fetchCandidates())
-      .catch(() => setError('Failed to delete candidate.'))
+      .catch(() => alert('Failed to delete candidate.'))
   }
 
   const getBadgeStyle = (currentStatus) => {
@@ -315,13 +289,38 @@ function CandidateManager() {
         </form>
       </div>
 
-      {isLoading && <p className="text-center text-slate-500">Loading protected data...</p>}
-      {error && <p className="text-center text-rose-600">{error}</p>}
+      {/* 2. SKELETON LOADER UI */}
+      {loading && (
+        <div className="space-y-3">
+          {[1, 2, 3].map((n) => (
+            <div key={n} className="border border-slate-200 rounded-xl p-4 bg-white shadow-sm animate-pulse flex items-center justify-between">
+              <div className="space-y-2 w-1/2">
+                <div className="h-4 bg-slate-200 rounded w-3/4"></div>
+                <div className="h-3 bg-slate-200 rounded w-1/2"></div>
+              </div>
+              <div className="h-8 bg-slate-200 rounded-full w-28"></div>
+            </div>
+          ))}
+        </div>
+      )}
 
-      {!isLoading && !error && (
+      {/* ERROR DISPLAY */}
+      {error && !loading && (
+        <div className="p-4 bg-rose-50 border border-rose-200 rounded-xl text-center text-rose-700">
+          <p className="font-medium">{error}</p>
+          <button onClick={fetchCandidates} className="mt-2 text-xs bg-rose-600 text-white px-3 py-1 rounded">Retry</button>
+        </div>
+      )}
+
+      {/* 3. EMPTY STATE & DATA RENDER */}
+      {!loading && !error && (
         <div className="space-y-3">
           {candidates.length === 0 ? (
-            <p className="text-center text-slate-400 py-6">No candidates found in pipeline.</p>
+            <div className="text-center py-12 bg-white border border-slate-200 rounded-xl shadow-sm">
+              <div className="text-4xl mb-2">📄</div>
+              <h4 className="text-base font-semibold text-slate-800">No Candidates Found</h4>
+              <p className="text-xs text-slate-500 mt-1">There are currently no active profiles in your pipeline. Add one above to get started.</p>
+            </div>
           ) : (
             candidates.map(candidate => {
               const candidateId = candidate._id || candidate.id;
@@ -387,4 +386,3 @@ function CandidateManager() {
 }
 
 export default CandidateManager
-
