@@ -8,6 +8,7 @@ import Pricing from './components/Pricing'
 import Footer from './components/Footer'
 import Auth from './components/Auth'
 import CandidateManager from './components/CandidateManager'
+import FileUpload from './components/FileUpload'
 
 function App() {
   const [userEmail, setUserEmail] = useState(null)
@@ -34,6 +35,11 @@ function App() {
       <Hero />
       <About />
       <Features />
+
+      {/* Standalone File Upload Section */}
+      <section className="py-8 bg-white border-t border-slate-200">
+        <FileUpload />
+      </section>
 
       {/* Protected Section */}
       <section id="candidate-section" className="py-12 bg-slate-100/60 border-y border-slate-200">
