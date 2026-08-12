@@ -1,6 +1,7 @@
 import { useState } from 'react';
 
-const API_URL = 'http://localhost:5000/api/auth';
+// Fixed API URL to point to backend server on port 5001
+const API_URL = 'http://127.0.0.1:5001/api/auth';
 
 function Auth({ onLoginSuccess }) {
   const [isSignup, setIsSignup] = useState(false);
@@ -36,7 +37,7 @@ function Auth({ onLoginSuccess }) {
       setLoading(false);
 
       if (!res.ok) {
-        setError(data.message || 'Authentication failed.');
+        setError(data.error || data.message || 'Authentication failed.');
         return;
       }
 
@@ -45,7 +46,7 @@ function Auth({ onLoginSuccess }) {
       onLoginSuccess(data.user.email);
     } catch (err) {
       setLoading(false);
-      setError('Backend unreachable. Is the backend server running?');
+      setError('Backend unreachable. Is the backend server running on port 5001?');
     }
   };
 
@@ -92,7 +93,7 @@ function Auth({ onLoginSuccess }) {
         <button
           type="submit"
           disabled={loading}
-          className="w-full bg-indigo-600 text-white font-medium py-2.5 rounded-lg hover:bg-indigo-700 transition"
+          className="w-full bg-indigo-600 text-white font-medium py-2.5 rounded-lg hover:bg-indigo-700 transition disabled:opacity-50"
         >
           {loading ? 'Processing...' : isSignup ? 'Sign Up' : 'Log In'}
         </button>

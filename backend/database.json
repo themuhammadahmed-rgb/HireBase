@@ -4,7 +4,24 @@
       "id": "1785780132639",
       "email": "bhaikiahalhai@gmail.com",
       "password": "$2b$10$P2cphn/YkrmQ2gnbbsetIeaqQILEgcsu3ohyfpvXzoiuJcHP0nh2m"
+    },
+    {
+      "id": "1786519618500",
+      "email": "muhammad.ahmed250506@gmail.com",
+      "password": "$2b$10$Jk1I2seDY5pbCsRlNz2aeOWJcfJmJCN5pLrXqjVifksb2BmyIGDmu"
     }
   ],
-  "candidates": []
+  "candidates": [
+    {
+      "_id": "1786523276103",
+      "fullName": "Muhammad Ahmed",
+      "email": "bhaikiahalhai@gmail.com",
+      "phone": "+923056662253",
+      "role": "Frontend",
+      "stage": "Applied",
+      "appliedDate": "2026-08-12",
+      "resumeUrl": "/uploads/1786523276096-Muhammad_Ahmed_CV.pdf",
+      "createdAt": "2026-08-12T08:27:56.103Z"
+    }
+  ]
 }

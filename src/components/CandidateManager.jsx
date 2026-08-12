@@ -1,388 +1,388 @@
-import { useState } from 'react'
-import { useApp } from './AppContext'
+import React, { useState, useEffect, useRef } from 'react';
 
-const API_URL = 'http://localhost:5000/api/candidates'
+export default function CandidateManager() {
+  const [candidates, setCandidates] = useState([]);
+  const [loading, setLoading] = useState(true);
 
-function CandidateManager() {
-  // 1. REFACTORED: Use Global State instead of local candidates/loading/error
-  const { candidates, loading, error, fetchCandidates } = useApp()
+  // Form State
+  const [fullName, setFullName] = useState('');
+  const [email, setEmail] = useState('');
+  const [phone, setPhone] = useState('');
+  const [role, setRole] = useState('Frontend');
+  const [stage, setStage] = useState('Applied');
+  const [appliedDate, setAppliedDate] = useState('');
+  const [resumeFile, setResumeFile] = useState(null);
+  const [submitting, setSubmitting] = useState(false);
 
-  const [formData, setFormData] = useState({
-    fullName: '',
-    email: '',
-    phone: '',
-    stage: 'Applied',
-    appliedDate: '',
-  })
-  const [resumeFile, setResumeFile] = useState(null)
-  const [formErrors, setFormErrors] = useState({})
-  const [isSubmitting, setIsSubmitting] = useState(false)
-  const [toast, setToast] = useState({ type: '', message: '' })
+  // Scroll Preservation
+  const scrollPos = useRef(0);
 
-  const getAuthHeaders = () => {
-    const token = localStorage.getItem('token')
-    return {
-      'Authorization': `Bearer ${token}`
-    }
-  }
+  const saveScroll = () => {
+    scrollPos.current = window.scrollY || document.documentElement.scrollTop;
+  };
 
-  const handleInputChange = (e) => {
-    setFormData({ ...formData, [e.target.name]: e.target.value })
-    if (formErrors[e.target.name]) {
-      setFormErrors({ ...formErrors, [e.target.name]: '' })
-    }
-  }
+  const restoreScroll = () => {
+    requestAnimationFrame(() => {
+      window.scrollTo({ top: scrollPos.current, behavior: 'instant' });
+    });
+  };
 
-  const handleFileChange = (e) => {
-    if (e.target.files[0]) {
-      setResumeFile(e.target.files[0])
-      if (formErrors.resume) setFormErrors({ ...formErrors, resume: '' })
-    }
-  }
+  useEffect(() => {
+    let isMounted = true;
+    const fetchCandidates = async () => {
+      const token = localStorage.getItem('token');
+      try {
+        const res = await fetch('http://127.0.0.1:5001/api/candidates', {
+          headers: { Authorization: `Bearer ${token}` }
+        });
+        if (res.ok) {
+          const data = await res.json();
+          if (isMounted) setCandidates(data);
+        }
+      } catch (err) {
+        console.error('Error fetching candidates:', err);
+      } finally {
+        if (isMounted) setLoading(false);
+      }
+    };
 
-  const validateForm = () => {
-    const errors = {}
+    fetchCandidates();
+    return () => { isMounted = false; };
+  }, []);
 
-    if (!formData.fullName.trim()) {
-      errors.fullName = 'Full Name is required.'
-    } else if (formData.fullName.trim().length < 2) {
-      errors.fullName = 'Name must be at least 2 characters.'
-    }
-
-    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
-    if (!formData.email) {
-      errors.email = 'Email address is required.'
-    } else if (!emailRegex.test(formData.email)) {
-      errors.email = 'Please enter a valid email address.'
-    }
-
-    if (!formData.phone) {
-      errors.phone = 'Phone number is required.'
-    } else if (formData.phone.trim().length < 10) {
-      errors.phone = 'Enter a valid phone number (min 10 digits).'
-    }
-
-    if (!formData.stage) {
-      errors.stage = 'Please select a pipeline stage.'
-    }
-
-    if (!formData.appliedDate) {
-      errors.appliedDate = 'Application date is required.'
-    }
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    saveScroll();
 
     if (!resumeFile) {
-      errors.resume = 'Resume file (PDF, PNG, or JPG) is required.'
+      alert('Please select a resume file before submitting.');
+      return;
     }
 
-    setFormErrors(errors)
-    return Object.keys(errors).length === 0
-  }
+    setSubmitting(true);
+    const token = localStorage.getItem('token');
+    const formData = new FormData();
+    formData.append('fullName', fullName);
+    formData.append('email', email);
+    formData.append('phone', phone);
+    formData.append('role', role);
+    formData.append('stage', stage);
+    formData.append('appliedDate', appliedDate);
+    formData.append('resume', resumeFile);
 
-  const handleAddCandidate = (e) => {
-    e.preventDefault()
-    setToast({ type: '', message: '' })
+    try {
+      const res = await fetch('http://127.0.0.1:5001/api/candidates', {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}` },
+        body: formData
+      });
 
-    if (!validateForm()) {
-      setToast({ type: 'error', message: 'Please resolve all validation errors before submitting.' })
-      return
+      if (res.ok) {
+        const newCandidate = await res.json();
+        setCandidates((prev) => [newCandidate, ...prev]);
+
+        setFullName('');
+        setEmail('');
+        setPhone('');
+        setRole('Frontend');
+        setStage('Applied');
+        setAppliedDate('');
+        setResumeFile(null);
+
+        // Notify Dashboard to quietly update analytics in the background
+        window.dispatchEvent(new Event('candidateAdded'));
+      } else {
+        const errData = await res.json();
+        alert(errData.error || 'Failed to submit candidate.');
+      }
+    } catch (err) {
+      console.error('Error submitting candidate:', err);
+    } finally {
+      setSubmitting(false);
+      restoreScroll();
+    }
+  };
+
+  const handleStageChange = async (e, candidateId, newStage) => {
+    if (e) {
+      e.preventDefault();
+      e.stopPropagation();
+    }
+    saveScroll();
+
+    setCandidates((prev) =>
+      prev.map((c) => (c._id === candidateId ? { ...c, stage: newStage } : c))
+    );
+
+    restoreScroll();
+
+    const token = localStorage.getItem('token');
+    try {
+      await fetch(`http://127.0.0.1:5001/api/candidates/${candidateId}`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`
+        },
+        body: JSON.stringify({ stage: newStage })
+      });
+      window.dispatchEvent(new Event('candidateAdded'));
+    } catch (err) {
+      console.error('Failed to update stage on server:', err);
+    }
+  };
+
+  const handleDelete = async (e, candidateId) => {
+    if (e) {
+      e.preventDefault();
+      e.stopPropagation();
     }
 
-    setIsSubmitting(true)
+    if (!window.confirm('Are you sure you want to delete this candidate?')) return;
+    saveScroll();
 
-    const submissionData = new FormData()
-    submissionData.append('fullName', formData.fullName)
-    submissionData.append('email', formData.email)
-    submissionData.append('phone', formData.phone)
-    submissionData.append('stage', formData.stage)
-    submissionData.append('appliedDate', formData.appliedDate)
-    submissionData.append('resume', resumeFile)
+    setCandidates((prev) => prev.filter((c) => c._id !== candidateId));
+    restoreScroll();
 
-    fetch(API_URL, {
-      method: 'POST',
-      headers: getAuthHeaders(),
-      body: submissionData
-    })
-      .then(async (res) => {
-        const data = await res.json()
-        if (!res.ok) {
-          if (data.errors) setFormErrors(data.errors)
-          throw new Error(data.message || 'Server error or validation failed.')
-        }
-        return data
-      })
-      .then(() => {
-        setToast({ type: 'success', message: 'Candidate registered successfully!' })
-        setFormData({ fullName: '', email: '', phone: '', stage: 'Applied', appliedDate: '' })
-        setResumeFile(null)
-        setFormErrors({})
-        // Re-fetch centrally via context
-        fetchCandidates()
-      })
-      .catch((err) => {
-        setToast({ type: 'error', message: err.message || 'Failed to submit candidate.' })
-      })
-      .finally(() => {
-        setIsSubmitting(false)
-      })
-  }
-
-  const handleStatusChange = (id, newStatus) => {
-    fetch(`${API_URL}/${id}`, {
-      method: 'PUT',
-      headers: {
-        'Content-Type': 'application/json',
-        ...getAuthHeaders()
-      },
-      body: JSON.stringify({ stage: newStatus })
-    })
-      .then(res => res.json())
-      .then(() => fetchCandidates())
-      .catch(() => alert('Failed to update stage.'))
-  }
-
-  const handleDelete = (id) => {
-    fetch(`${API_URL}/${id}`, {
-      method: 'DELETE',
-      headers: getAuthHeaders()
-    })
-      .then(() => fetchCandidates())
-      .catch(() => alert('Failed to delete candidate.'))
-  }
-
-  const getBadgeStyle = (currentStatus) => {
-    switch (currentStatus) {
-      case 'Hired': return 'bg-emerald-100 text-emerald-800 border-emerald-300'
-      case 'Interviewing': return 'bg-amber-100 text-amber-800 border-amber-300'
-      case 'Rejected': return 'bg-rose-100 text-rose-800 border-rose-300'
-      case 'Screening': return 'bg-purple-100 text-purple-800 border-purple-300'
-      case 'Offer Extended': return 'bg-blue-100 text-blue-800 border-blue-300'
-      default: return 'bg-indigo-100 text-indigo-800 border-indigo-300'
+    const token = localStorage.getItem('token');
+    try {
+      await fetch(`http://127.0.0.1:5001/api/candidates/${candidateId}`, {
+        method: 'DELETE',
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      window.dispatchEvent(new Event('candidateAdded'));
+    } catch (err) {
+      console.error('Failed to delete candidate:', err);
     }
-  }
+  };
 
   return (
-    <section id="candidates" className="px-6 py-4 max-w-4xl mx-auto">
-      <div className="text-center mb-8">
-        <span className="inline-block px-3 py-1 bg-indigo-100 text-indigo-700 text-xs font-semibold rounded-full uppercase tracking-wider mb-2">
-          Protected Workspace
-        </span>
-        <h2 className="text-3xl font-bold text-slate-900">
-          Candidate Pipeline
-        </h2>
-      </div>
-
-      <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm mb-8 text-left">
-        <h3 className="text-lg font-bold text-slate-900 mb-4">Add Candidate (Validation & Upload)</h3>
-        
-        {toast.message && (
-          <div className={`p-3 mb-4 rounded-lg text-sm font-medium transition-all ${
-            toast.type === 'success' ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' : 'bg-rose-50 text-rose-700 border border-rose-200'
-          }`}>
-            {toast.message}
-          </div>
-        )}
-
-        <form onSubmit={handleAddCandidate} className="space-y-4" noValidate>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '24px', maxWidth: '1100px', margin: '0 auto', width: '100%' }}>
+      
+      {/* FORM CARD */}
+      <div style={{ backgroundColor: '#ffffff', borderRadius: '16px', padding: '28px', color: '#0f172a', boxShadow: '0 10px 25px -5px rgba(0, 0, 0, 0.1)' }}>
+        <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '18px' }}>
+          
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: '16px' }}>
             <div>
-              <label className="block text-xs font-semibold text-slate-700 mb-1">Full Name</label>
+              <label style={{ display: 'block', fontSize: '13px', fontWeight: '600', color: '#334155', marginBottom: '6px' }}>Full Name</label>
               <input
                 type="text"
-                name="fullName"
-                placeholder="Jane Doe"
-                value={formData.fullName}
-                onChange={handleInputChange}
-                className={`w-full border rounded-lg px-3 py-2 text-sm text-slate-800 outline-none focus:ring-2 ${
-                  formErrors.fullName ? 'border-rose-500 focus:ring-rose-200' : 'border-slate-300 focus:ring-indigo-500'
-                }`}
+                required
+                value={fullName}
+                onChange={(e) => setFullName(e.target.value)}
+                placeholder="Muhammad Ahmed"
+                style={{ width: '100%', padding: '10px 14px', borderRadius: '8px', border: '1px solid #cbd5e1', backgroundColor: '#ffffff', color: '#0f172a', fontSize: '14px', outline: 'none' }}
               />
-              {formErrors.fullName && <p className="text-rose-500 text-xs mt-1">{formErrors.fullName}</p>}
             </div>
 
             <div>
-              <label className="block text-xs font-semibold text-slate-700 mb-1">Email Address</label>
+              <label style={{ display: 'block', fontSize: '13px', fontWeight: '600', color: '#334155', marginBottom: '6px' }}>Email Address</label>
               <input
                 type="email"
-                name="email"
-                placeholder="jane@example.com"
-                value={formData.email}
-                onChange={handleInputChange}
-                className={`w-full border rounded-lg px-3 py-2 text-sm text-slate-800 outline-none focus:ring-2 ${
-                  formErrors.email ? 'border-rose-500 focus:ring-rose-200' : 'border-slate-300 focus:ring-indigo-500'
-                }`}
+                required
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                placeholder="bhaikiahalhai@gmail.com"
+                style={{ width: '100%', padding: '10px 14px', borderRadius: '8px', border: '1px solid #cbd5e1', backgroundColor: '#ffffff', color: '#0f172a', fontSize: '14px', outline: 'none' }}
               />
-              {formErrors.email && <p className="text-rose-500 text-xs mt-1">{formErrors.email}</p>}
             </div>
 
             <div>
-              <label className="block text-xs font-semibold text-slate-700 mb-1">Phone Number</label>
+              <label style={{ display: 'block', fontSize: '13px', fontWeight: '600', color: '#334155', marginBottom: '6px' }}>Phone Number</label>
               <input
                 type="text"
-                name="phone"
-                placeholder="+1 555-0192"
-                value={formData.phone}
-                onChange={handleInputChange}
-                className={`w-full border rounded-lg px-3 py-2 text-sm text-slate-800 outline-none focus:ring-2 ${
-                  formErrors.phone ? 'border-rose-500 focus:ring-rose-200' : 'border-slate-300 focus:ring-indigo-500'
-                }`}
+                required
+                value={phone}
+                onChange={(e) => setPhone(e.target.value)}
+                placeholder="+923056662253"
+                style={{ width: '100%', padding: '10px 14px', borderRadius: '8px', border: '1px solid #cbd5e1', backgroundColor: '#ffffff', color: '#0f172a', fontSize: '14px', outline: 'none' }}
               />
-              {formErrors.phone && <p className="text-rose-500 text-xs mt-1">{formErrors.phone}</p>}
             </div>
 
             <div>
-              <label className="block text-xs font-semibold text-slate-700 mb-1">Pipeline Stage</label>
+              <label style={{ display: 'block', fontSize: '13px', fontWeight: '600', color: '#334155', marginBottom: '6px' }}>Job Role</label>
               <select
-                name="stage"
-                value={formData.stage}
-                onChange={handleInputChange}
-                className={`w-full border rounded-lg px-3 py-2 text-sm text-slate-800 bg-white outline-none focus:ring-2 ${
-                  formErrors.stage ? 'border-rose-500 focus:ring-rose-200' : 'border-slate-300 focus:ring-indigo-500'
-                }`}
+                value={role}
+                onChange={(e) => setRole(e.target.value)}
+                style={{ width: '100%', padding: '10px 14px', borderRadius: '8px', border: '1px solid #cbd5e1', backgroundColor: '#ffffff', color: '#0f172a', fontSize: '14px', outline: 'none', cursor: 'pointer' }}
+              >
+                <option value="Frontend">Frontend</option>
+                <option value="Backend">Backend</option>
+                <option value="Fullstack">Fullstack</option>
+                <option value="Design">Design</option>
+              </select>
+            </div>
+
+            <div>
+              <label style={{ display: 'block', fontSize: '13px', fontWeight: '600', color: '#334155', marginBottom: '6px' }}>Pipeline Stage</label>
+              <select
+                value={stage}
+                onChange={(e) => setStage(e.target.value)}
+                style={{ width: '100%', padding: '10px 14px', borderRadius: '8px', border: '1px solid #cbd5e1', backgroundColor: '#ffffff', color: '#0f172a', fontSize: '14px', outline: 'none', cursor: 'pointer' }}
               >
                 <option value="Applied">Applied</option>
                 <option value="Screening">Screening</option>
-                <option value="Interviewing">Interviewing</option>
-                <option value="Offer Extended">Offer Extended</option>
+                <option value="Shortlisted">Shortlisted</option>
+                <option value="Interview">Interview</option>
                 <option value="Hired">Hired</option>
-                <option value="Rejected">Rejected</option>
               </select>
-              {formErrors.stage && <p className="text-rose-500 text-xs mt-1">{formErrors.stage}</p>}
             </div>
 
             <div>
-              <label className="block text-xs font-semibold text-slate-700 mb-1">Application Date</label>
+              <label style={{ display: 'block', fontSize: '13px', fontWeight: '600', color: '#334155', marginBottom: '6px' }}>Application Date</label>
               <input
                 type="date"
-                name="appliedDate"
-                value={formData.appliedDate}
-                onChange={handleInputChange}
-                className={`w-full border rounded-lg px-3 py-2 text-sm text-slate-800 outline-none focus:ring-2 ${
-                  formErrors.appliedDate ? 'border-rose-500 focus:ring-rose-200' : 'border-slate-300 focus:ring-indigo-500'
-                }`}
+                required
+                value={appliedDate}
+                onChange={(e) => setAppliedDate(e.target.value)}
+                style={{ width: '100%', padding: '10px 14px', borderRadius: '8px', border: '1px solid #cbd5e1', backgroundColor: '#ffffff', color: '#0f172a', fontSize: '14px', outline: 'none', colorScheme: 'light' }}
               />
-              {formErrors.appliedDate && <p className="text-rose-500 text-xs mt-1">{formErrors.appliedDate}</p>}
             </div>
+          </div>
 
-            <div>
-              <label className="block text-xs font-semibold text-slate-700 mb-1">Resume File (PDF / Image)</label>
-              <input
-                type="file"
-                accept=".pdf,.png,.jpg,.jpeg"
-                onChange={handleFileChange}
-                className={`w-full border rounded-lg px-3 py-1.5 text-xs text-slate-800 bg-white outline-none focus:ring-2 ${
-                  formErrors.resume ? 'border-rose-500 focus:ring-rose-200' : 'border-slate-300 focus:ring-indigo-500'
-                }`}
-              />
-              {formErrors.resume && <p className="text-rose-500 text-xs mt-1">{formErrors.resume}</p>}
+          <div>
+            <label style={{ display: 'block', fontSize: '13px', fontWeight: '600', color: '#334155', marginBottom: '6px' }}>Resume File (PDF / Image)</label>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '12px', padding: '8px 12px', borderRadius: '8px', border: '1px solid #cbd5e1', backgroundColor: '#ffffff' }}>
+              <label style={{ backgroundColor: '#eff6ff', color: '#4338ca', fontWeight: '600', fontSize: '13px', padding: '6px 14px', borderRadius: '6px', border: '1px solid #c7d2fe', cursor: 'pointer' }}>
+                Choose File
+                <input
+                  type="file"
+                  accept=".pdf,.png,.jpg,.jpeg"
+                  onChange={(e) => setResumeFile(e.target.files[0])}
+                  style={{ display: 'none' }}
+                />
+              </label>
+              <span style={{ fontSize: '13px', color: '#64748b' }}>
+                {resumeFile ? resumeFile.name : 'No file chosen'}
+              </span>
             </div>
           </div>
 
           <button
             type="submit"
-            disabled={isSubmitting}
-            className={`w-full mt-2 font-medium px-6 py-2.5 rounded-lg text-white transition flex items-center justify-center ${
-              isSubmitting ? 'bg-indigo-400 cursor-not-allowed' : 'bg-indigo-600 hover:bg-indigo-700'
-            }`}
+            disabled={submitting}
+            style={{
+              width: '100%',
+              backgroundColor: '#4338ca',
+              color: '#ffffff',
+              fontWeight: '600',
+              fontSize: '15px',
+              padding: '12px',
+              borderRadius: '12px',
+              border: 'none',
+              cursor: 'pointer',
+              marginTop: '6px',
+              opacity: submitting ? 0.7 : 1
+            }}
           >
-            {isSubmitting ? 'Validating & Submitting...' : 'Submit Candidate'}
+            {submitting ? 'Submitting...' : 'Submit Candidate'}
           </button>
         </form>
       </div>
 
-      {/* 2. SKELETON LOADER UI */}
-      {loading && (
-        <div className="space-y-3">
-          {[1, 2, 3].map((n) => (
-            <div key={n} className="border border-slate-200 rounded-xl p-4 bg-white shadow-sm animate-pulse flex items-center justify-between">
-              <div className="space-y-2 w-1/2">
-                <div className="h-4 bg-slate-200 rounded w-3/4"></div>
-                <div className="h-3 bg-slate-200 rounded w-1/2"></div>
-              </div>
-              <div className="h-8 bg-slate-200 rounded-full w-28"></div>
-            </div>
-          ))}
-        </div>
-      )}
+      {/* PIPELINE CONTAINER */}
+      <div style={{ backgroundColor: '#131b2e', borderRadius: '16px', padding: '28px', border: '1px solid #1e293b', color: '#ffffff', minHeight: '300px' }}>
+        <h2 style={{ fontSize: '18px', fontWeight: '700', marginBottom: '16px' }}>Candidate Pipeline</h2>
 
-      {/* ERROR DISPLAY */}
-      {error && !loading && (
-        <div className="p-4 bg-rose-50 border border-rose-200 rounded-xl text-center text-rose-700">
-          <p className="font-medium">{error}</p>
-          <button onClick={fetchCandidates} className="mt-2 text-xs bg-rose-600 text-white px-3 py-1 rounded">Retry</button>
-        </div>
-      )}
-
-      {/* 3. EMPTY STATE & DATA RENDER */}
-      {!loading && !error && (
-        <div className="space-y-3">
-          {candidates.length === 0 ? (
-            <div className="text-center py-12 bg-white border border-slate-200 rounded-xl shadow-sm">
-              <div className="text-4xl mb-2">📄</div>
-              <h4 className="text-base font-semibold text-slate-800">No Candidates Found</h4>
-              <p className="text-xs text-slate-500 mt-1">There are currently no active profiles in your pipeline. Add one above to get started.</p>
-            </div>
-          ) : (
-            candidates.map(candidate => {
-              const candidateId = candidate._id || candidate.id;
-              const displayName = candidate.fullName || candidate.name;
-              const displayStage = candidate.stage || candidate.status || 'Applied';
-
-              return (
-                <div
-                  key={candidateId}
-                  className="flex flex-col sm:flex-row items-start sm:items-center justify-between border border-slate-200 rounded-xl p-4 bg-white shadow-sm hover:border-slate-300 transition gap-4"
-                >
-                  <div>
-                    <p className="font-semibold text-slate-900 text-base">{displayName}</p>
-                    <p className="text-slate-500 text-sm">
-                      {candidate.email} • {candidate.phone}
-                    </p>
-                    <div className="flex items-center gap-3 mt-1">
-                      {candidate.appliedDate && (
-                        <p className="text-slate-400 text-xs">Applied: {candidate.appliedDate}</p>
-                      )}
-                      {candidate.resumeUrl && (
-                        <a
-                          href={`http://localhost:5000/${candidate.resumeUrl}`}
-                          target="_blank"
-                          rel="noreferrer"
-                          className="text-indigo-600 hover:underline text-xs font-medium"
-                        >
-                          View Resume
-                        </a>
-                      )}
-                    </div>
+        {loading ? (
+          <p style={{ color: '#94a3b8', fontSize: '14px' }}>Loading pipeline...</p>
+        ) : candidates.length === 0 ? (
+          <p style={{ color: '#94a3b8', fontSize: '14px', textAlign: 'center', padding: '36px 0' }}>
+            No candidates found in pipeline.
+          </p>
+        ) : (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+            {candidates.map((candidate) => (
+              <div
+                key={candidate._id}
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  padding: '14px 18px',
+                  backgroundColor: '#1e293b',
+                  borderRadius: '12px',
+                  border: '1px solid #334155'
+                }}
+              >
+                <div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <span style={{ fontWeight: '600', fontSize: '15px', color: '#ffffff' }}>{candidate.fullName}</span>
+                    <span style={{ backgroundColor: 'rgba(99, 102, 241, 0.2)', color: '#818cf8', fontSize: '12px', padding: '2px 8px', borderRadius: '4px', fontWeight: '500' }}>
+                      {candidate.role}
+                    </span>
                   </div>
-
-                  <div className="flex items-center gap-3 w-full sm:w-auto justify-between sm:justify-end">
-                    <select
-                      value={displayStage}
-                      onChange={(e) => handleStatusChange(candidateId, e.target.value)}
-                      className={`text-xs font-semibold px-3 py-1.5 rounded-full border outline-none cursor-pointer transition ${getBadgeStyle(displayStage)}`}
-                    >
-                      <option value="Applied">Applied</option>
-                      <option value="Screening">Screening</option>
-                      <option value="Interviewing">Interviewing</option>
-                      <option value="Offer Extended">Offer Extended</option>
-                      <option value="Hired">Hired</option>
-                      <option value="Rejected">Rejected</option>
-                    </select>
-
-                    <button
-                      onClick={() => handleDelete(candidateId)}
-                      className="text-rose-500 hover:text-rose-700 hover:bg-rose-50 text-sm font-medium px-2 py-1 rounded transition"
-                    >
-                      Delete
-                    </button>
-                  </div>
+                  <p style={{ fontSize: '13px', color: '#94a3b8', marginTop: '4px' }}>
+                    {candidate.email} • {candidate.phone}
+                  </p>
+                  <p style={{ fontSize: '12px', color: '#64748b', marginTop: '2px' }}>
+                    Applied: {candidate.appliedDate}
+                  </p>
                 </div>
-              );
-            })
-          )}
-        </div>
-      )}
-    </section>
-  )
-}
 
-export default CandidateManager
+                <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                  <select
+                    value={candidate.stage}
+                    onChange={(e) => handleStageChange(e, candidate._id, e.target.value)}
+                    style={{
+                      backgroundColor: '#0f172a',
+                      color: '#ffffff',
+                      border: '1px solid #334155',
+                      fontSize: '13px',
+                      borderRadius: '6px',
+                      padding: '6px 12px',
+                      outline: 'none',
+                      cursor: 'pointer'
+                    }}
+                  >
+                    <option value="Applied">Applied</option>
+                    <option value="Screening">Screening</option>
+                    <option value="Shortlisted">Shortlisted</option>
+                    <option value="Interview">Interview</option>
+                    <option value="Hired">Hired</option>
+                  </select>
+
+                  {candidate.resumeUrl && (
+                    <a
+                      href={`http://127.0.0.1:5001${candidate.resumeUrl}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      style={{
+                        backgroundColor: '#312e81',
+                        color: '#c7d2fe',
+                        fontSize: '13px',
+                        padding: '6px 12px',
+                        borderRadius: '6px',
+                        textDecoration: 'none'
+                      }}
+                    >
+                      Resume
+                    </a>
+                  )}
+
+                  <button
+                    type="button"
+                    onClick={(e) => handleDelete(e, candidate._id)}
+                    style={{
+                      backgroundColor: '#450a0a',
+                      color: '#fca5a5',
+                      fontSize: '13px',
+                      padding: '6px 12px',
+                      borderRadius: '6px',
+                      border: 'none',
+                      cursor: 'pointer'
+                    }}
+                  >
+                    Delete
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}

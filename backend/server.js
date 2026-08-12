@@ -13,7 +13,7 @@ const JWT_SECRET = process.env.JWT_SECRET || 'supersecretkey123';
 const DB_FILE = path.join(__dirname, 'database.json');
 const UPLOADS_DIR = path.join(__dirname, 'uploads');
 
-// Explicit CORS configuration to allow all requests from any local origin
+// Middleware
 app.use(cors({
   origin: true,
   credentials: true,
@@ -24,12 +24,11 @@ app.use(cors({
 app.use(express.json());
 app.use('/uploads', express.static(UPLOADS_DIR));
 
-// Ensure Uploads Directory Exists
 if (!fs.existsSync(UPLOADS_DIR)) {
   fs.mkdirSync(UPLOADS_DIR, { recursive: true });
 }
 
-// Helper: Read Database File
+// Database Helper Functions
 const readDB = () => {
   if (!fs.existsSync(DB_FILE)) {
     const initialData = { users: [], candidates: [] };
@@ -37,78 +36,57 @@ const readDB = () => {
     return initialData;
   }
   try {
-    const data = fs.readFileSync(DB_FILE, 'utf-8');
-    return JSON.parse(data);
+    return JSON.parse(fs.readFileSync(DB_FILE, 'utf-8'));
   } catch (err) {
     return { users: [], candidates: [] };
   }
 };
 
-// Helper: Write Database File
-const writeDB = (data) => {
-  fs.writeFileSync(DB_FILE, JSON.stringify(data, null, 2));
-};
+const writeDB = (data) => fs.writeFileSync(DB_FILE, JSON.stringify(data, null, 2));
 
-// Fixed Multer Storage Configuration
+// Multer Storage Configuration
 const storage = multer.diskStorage({
-  destination: (req, file, cb) => {
-    if (!fs.existsSync(UPLOADS_DIR)) {
-      fs.mkdirSync(UPLOADS_DIR, { recursive: true });
-    }
-    cb(null, UPLOADS_DIR);
-  },
+  destination: (req, file, cb) => cb(null, UPLOADS_DIR),
   filename: (req, file, cb) => {
     const sanitizedName = file.originalname.replace(/[^a-zA-Z0-9.-]/g, '_');
     cb(null, `${Date.now()}-${sanitizedName}`);
   }
 });
 
-// File Filter
 const upload = multer({ 
   storage,
-  limits: { fileSize: 5 * 1024 * 1024 }, // 5MB limit
+  limits: { fileSize: 5 * 1024 * 1024 },
   fileFilter: (req, file, cb) => {
     const allowedExtensions = ['.png', '.jpg', '.jpeg', '.pdf'];
     const ext = path.extname(file.originalname).toLowerCase();
-    
-    if (allowedExtensions.includes(ext)) {
-      return cb(null, true);
-    }
+    if (allowedExtensions.includes(ext)) return cb(null, true);
     cb(new Error('Only PNG, JPG, JPEG, and PDF files are allowed!'));
   }
 });
 
-// JWT Authentication Middleware
+// Authentication Middleware
 const authenticateToken = (req, res, next) => {
   const authHeader = req.headers['authorization'];
   const token = authHeader && authHeader.split(' ')[1];
   if (!token) return res.status(401).json({ error: 'Access denied. No token provided.' });
 
   try {
-    const decoded = jwt.decode(token, JWT_SECRET);
-    req.user = decoded;
+    req.user = jwt.decode(token, JWT_SECRET);
     next();
   } catch (err) {
     res.status(403).json({ error: 'Invalid token.' });
   }
 };
 
-// -------------------------------------------------------------
-// AUTH ROUTES
-// -------------------------------------------------------------
-
+// --- AUTHENTICATION ROUTES ---
 app.post('/api/auth/signup', async (req, res) => {
   try {
     const { email, password } = req.body;
-    if (!email || !password) {
-      return res.status(400).json({ error: 'Email and password are required.' });
-    }
+    if (!email || !password) return res.status(400).json({ error: 'Email and password are required.' });
 
     const db = readDB();
-    const existingUser = db.users.find(u => u.email === email);
-    if (existingUser) {
-      return res.status(400).json({ error: 'User already exists.' });
-    }
+    const existingUser = db.users.find(u => u.email.toLowerCase() === email.toLowerCase());
+    if (existingUser) return res.status(400).json({ error: 'User already exists.' });
 
     const hashedPassword = await bcrypt.hash(password, 10);
     const newUser = { id: Date.now().toString(), email, password: hashedPassword };
@@ -117,9 +95,9 @@ app.post('/api/auth/signup', async (req, res) => {
     writeDB(db);
 
     const token = jwt.encode({ id: newUser.id, email: newUser.email }, JWT_SECRET);
-    res.json({ token, user: { id: newUser.id, email: newUser.email } });
+    res.status(201).json({ token, user: { email: newUser.email } });
   } catch (err) {
-    res.status(500).json({ error: 'Server error during signup.' });
+    res.status(500).json({ error: 'Error during user registration.' });
   }
 });
 
@@ -127,52 +105,36 @@ app.post('/api/auth/login', async (req, res) => {
   try {
     const { email, password } = req.body;
     const db = readDB();
-    const user = db.users.find(u => u.email === email);
 
-    if (!user) {
-      return res.status(400).json({ error: 'Invalid email or password.' });
-    }
+    const user = db.users.find(u => u.email.toLowerCase() === email.toLowerCase());
+    if (!user) return res.status(400).json({ error: 'Invalid email or password.' });
 
-    const isMatch = await bcrypt.compare(password, user.password);
-    if (!isMatch) {
-      return res.status(400).json({ error: 'Invalid email or password.' });
-    }
+    const validPassword = await bcrypt.compare(password, user.password);
+    if (!validPassword) return res.status(400).json({ error: 'Invalid email or password.' });
 
     const token = jwt.encode({ id: user.id, email: user.email }, JWT_SECRET);
-    res.json({ token, user: { id: user.id, email: user.email } });
+    res.json({ token, user: { email: user.email } });
   } catch (err) {
-    res.status(500).json({ error: 'Server error during login.' });
+    res.status(500).json({ error: 'Error during login.' });
   }
 });
 
-// -------------------------------------------------------------
-// CANDIDATE & UPLOAD ROUTES
-// -------------------------------------------------------------
-
-app.post('/api/upload', upload.single('file'), (req, res) => {
-  if (!req.file) {
-    return res.status(400).json({ error: 'No file uploaded.' });
-  }
-  
-  const fileUrl = `/uploads/${req.file.filename}`;
-  res.status(200).json({
-    message: 'File uploaded successfully!',
-    fileName: req.file.originalname,
-    filePath: fileUrl
-  });
-});
-
+// --- CANDIDATE ROUTES ---
 app.get('/api/candidates', authenticateToken, (req, res) => {
-  const db = readDB();
-  res.json(db.candidates.reverse());
+  try {
+    const db = readDB();
+    res.json((db.candidates || []).slice().reverse());
+  } catch (err) {
+    res.status(500).json({ error: 'Error fetching candidates.' });
+  }
 });
 
 app.post('/api/candidates', authenticateToken, upload.single('resume'), (req, res) => {
   try {
-    const { fullName, email, phone, stage, appliedDate } = req.body;
+    const { fullName, email, phone, role, stage, appliedDate } = req.body;
 
-    if (!fullName || !email || !phone || !stage || !appliedDate || !req.file) {
-      return res.status(400).json({ error: 'All fields including resume file are required.' });
+    if (!fullName || !email || !phone || !role || !stage || !appliedDate || !req.file) {
+      return res.status(400).json({ error: 'All fields including role and resume file are required.' });
     }
 
     const db = readDB();
@@ -181,12 +143,14 @@ app.post('/api/candidates', authenticateToken, upload.single('resume'), (req, re
       fullName,
       email,
       phone,
+      role,
       stage,
       appliedDate,
       resumeUrl: `/uploads/${req.file.filename}`,
       createdAt: new Date().toISOString()
     };
 
+    if (!db.candidates) db.candidates = [];
     db.candidates.push(newCandidate);
     writeDB(db);
 
@@ -196,27 +160,44 @@ app.post('/api/candidates', authenticateToken, upload.single('resume'), (req, re
   }
 });
 
+// UPDATE CANDIDATE STAGE
 app.put('/api/candidates/:id', authenticateToken, (req, res) => {
   try {
+    const { id } = req.params;
     const { stage } = req.body;
+
+    if (!stage) {
+      return res.status(400).json({ error: 'Stage is required.' });
+    }
+
     const db = readDB();
-    const candidate = db.candidates.find(c => c._id === req.params.id);
+    const index = db.candidates.findIndex((c) => c._id === id);
 
-    if (!candidate) return res.status(404).json({ error: 'Candidate not found.' });
+    if (index === -1) {
+      return res.status(404).json({ error: 'Candidate not found.' });
+    }
 
-    candidate.stage = stage;
+    db.candidates[index].stage = stage;
     writeDB(db);
 
-    res.json(candidate);
+    res.json(db.candidates[index]);
   } catch (err) {
     res.status(500).json({ error: 'Error updating candidate stage.' });
   }
 });
 
+// DELETE CANDIDATE
 app.delete('/api/candidates/:id', authenticateToken, (req, res) => {
   try {
+    const { id } = req.params;
     const db = readDB();
-    db.candidates = db.candidates.filter(c => c._id !== req.params.id);
+
+    const filteredCandidates = db.candidates.filter((c) => c._id !== id);
+    if (db.candidates.length === filteredCandidates.length) {
+      return res.status(404).json({ error: 'Candidate not found.' });
+    }
+
+    db.candidates = filteredCandidates;
     writeDB(db);
 
     res.json({ message: 'Candidate deleted successfully.' });
@@ -225,19 +206,76 @@ app.delete('/api/candidates/:id', authenticateToken, (req, res) => {
   }
 });
 
-// Error Handler
-app.use((err, req, res, next) => {
-  console.error('❌ Server Upload Error:', err.message);
-  if (err instanceof multer.MulterError) {
-    return res.status(400).json({ error: `Upload error: ${err.message}` });
-  } else if (err) {
-    return res.status(400).json({ error: err.message });
+// --- ANALYTICS ROUTE ---
+app.get('/api/analytics', (req, res) => {
+  try {
+    const filter = req.query.filter || 'all';
+    const db = readDB();
+    let candidates = db.candidates || [];
+
+    if (filter === 'recent') {
+      candidates = candidates.slice(-5);
+    }
+
+    const stats = {
+      totalApplications: candidates.length,
+      shortlisted: candidates.filter(c => c.stage === 'Shortlisted').length,
+      interviews: candidates.filter(c => c.stage === 'Interview' || c.stage === 'Interviewing').length,
+      hired: candidates.filter(c => c.stage === 'Hired').length
+    };
+
+    const roles = ['Frontend', 'Backend', 'Fullstack', 'Design'];
+    const categoryBreakdown = roles.map(role => ({
+      category: role,
+      count: candidates.filter(c => (c.role || '').toLowerCase() === role.toLowerCase()).length
+    }));
+
+    const statusDistribution = [
+      { name: 'Applied/Screening', value: candidates.filter(c => c.stage === 'Applied' || c.stage === 'Screening').length, color: '#f59e0b' },
+      { name: 'Shortlisted', value: stats.shortlisted, color: '#3b82f6' },
+      { name: 'Interview', value: stats.interviews, color: '#8b5cf6' },
+      { name: 'Hired', value: stats.hired, color: '#10b981' }
+    ];
+
+    const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+    const currentMonthIndex = new Date().getMonth();
+    
+    const recentMonths = [];
+    for (let i = 4; i >= 0; i--) {
+      const d = new Date();
+      d.setMonth(currentMonthIndex - i);
+      recentMonths.push({
+        monthName: monthNames[d.getMonth()],
+        year: d.getFullYear(),
+        monthNum: d.getMonth()
+      });
+    }
+
+    const applicationTrends = recentMonths.map(m => {
+      const monthCandidates = candidates.filter(c => {
+        if (!c.appliedDate) return false;
+        const candDate = new Date(c.appliedDate);
+        return candDate.getMonth() === m.monthNum && candDate.getFullYear() === m.year;
+      });
+
+      return {
+        month: m.monthName,
+        applications: monthCandidates.length,
+        hires: monthCandidates.filter(c => c.stage === 'Hired').length
+      };
+    });
+
+    res.json({
+      stats,
+      applicationTrends,
+      statusDistribution,
+      categoryBreakdown
+    });
+  } catch (err) {
+    res.status(500).json({ error: 'Error fetching analytics data.' });
   }
-  next();
 });
 
-// Listen on all network interfaces
 app.listen(PORT, '0.0.0.0', () => {
   console.log(`🚀 Server running on http://127.0.0.1:${PORT}`);
-  console.log(`📁 JSON Database active at database.json`);
 });
