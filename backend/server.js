@@ -104,6 +104,8 @@ app.post('/api/auth/signup', async (req, res) => {
 app.post('/api/auth/login', async (req, res) => {
   try {
     const { email, password } = req.body;
+    if (!email || !password) return res.status(400).json({ error: 'Email and password are required.' });
+
     const db = readDB();
 
     const user = db.users.find(u => u.email.toLowerCase() === email.toLowerCase());
@@ -276,6 +278,11 @@ app.get('/api/analytics', (req, res) => {
   }
 });
 
-app.listen(PORT, '0.0.0.0', () => {
-  console.log(`🚀 Server running on http://127.0.0.1:${PORT}`);
-});
+// Avoid listening directly during tests
+if (process.env.NODE_ENV !== 'test') {
+  app.listen(PORT, '0.0.0.0', () => {
+    console.log(`🚀 Server running on http://127.0.0.1:${PORT}`);
+  });
+}
+
+module.exports = app;
