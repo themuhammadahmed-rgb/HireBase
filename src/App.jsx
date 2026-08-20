@@ -9,7 +9,7 @@ import Footer from './components/Footer';
 import Auth from './components/Auth';
 import CandidateManager from './components/CandidateManager';
 import FileUpload from './components/FileUpload';
-import Dashboard from './components/Dashboard';
+import Dashboard from "./components/DashBoard";
 
 function App() {
   const [userEmail, setUserEmail] = useState(null);
