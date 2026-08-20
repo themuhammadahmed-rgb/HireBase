@@ -1,0 +1,4 @@
+backend/
+src/*.test.jsx
+src/*.test.js
+src/setupTests.js
